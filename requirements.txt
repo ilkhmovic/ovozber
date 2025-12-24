@@ -1,0 +1,5 @@
+django>=6.0
+djangorestframework>=3.14.0
+python-telegram-bot>=20.0
+requests>=2.31.0
+Pillow>=10.0.0
