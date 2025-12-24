@@ -137,7 +137,9 @@ class District(models.Model):
 
 class Candidate(models.Model):
     """Nomzodlar"""
-    district = models.ForeignKey(District, on_delete=models.CASCADE, related_name='candidates', verbose_name="Tuman")
+    # Associate candidate directly with a Poll (required) and optionally with a District
+    poll = models.ForeignKey('Poll', on_delete=models.CASCADE, related_name='candidates', verbose_name="So'rovnoma")
+    district = models.ForeignKey(District, on_delete=models.CASCADE, related_name='candidates', verbose_name="Tuman", null=True, blank=True)
     full_name = models.CharField(max_length=255, verbose_name="To'liq ism")
     photo = models.ImageField(upload_to='candidates/', blank=True, null=True, verbose_name="Rasm")
     bio = models.TextField(blank=True, null=True, verbose_name="Biografiya")
@@ -152,12 +154,26 @@ class Candidate(models.Model):
         ordering = ['order', 'full_name']
 
     def __str__(self):
-        return f"{self.full_name} - {self.district.name}"
+        if self.district:
+            return f"{self.full_name} - {self.district.name}"
+        return f"{self.full_name} ({self.poll.title})"
 
     @property
     def vote_count(self):
         """Nomzod uchun berilgan ovozlar soni"""
         return self.votes.count()
+
+    def clean(self):
+        """Ensure candidate's district (if provided) belongs to the same poll."""
+        from django.core.exceptions import ValidationError
+
+        if self.district and self.district.region.poll_id != self.poll_id:
+            raise ValidationError("Agar tuman ko'rsatilsa, u ko'rsatilgan so'rovnomaga tegishli bo'lishi kerak.")
+
+    def save(self, *args, **kwargs):
+        # Validate consistency before saving
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class Vote(models.Model):
@@ -180,5 +196,9 @@ class Vote(models.Model):
     def save(self, *args, **kwargs):
         """Ovoz berilganda poll ni avtomatik belgilash"""
         if not self.poll_id and self.candidate:
-            self.poll = self.candidate.district.region.poll
+            # Prefer candidate.poll, fallback to candidate.district.region.poll for older records
+            if hasattr(self.candidate, 'poll') and self.candidate.poll_id:
+                self.poll = self.candidate.poll
+            elif self.candidate.district:
+                self.poll = self.candidate.district.region.poll
         super().save(*args, **kwargs)

@@ -37,11 +37,13 @@ class PollSerializer(serializers.ModelSerializer):
 class CandidateSerializer(serializers.ModelSerializer):
     vote_count = serializers.IntegerField(read_only=True)
     district_name = serializers.CharField(source='district.name', read_only=True)
+    poll_id = serializers.IntegerField(source='poll.id', read_only=True)
+    poll_title = serializers.CharField(source='poll.title', read_only=True)
     
     class Meta:
         model = Candidate
         fields = ['id', 'full_name', 'photo', 'bio', 'position', 'vote_count', 
-                  'district_name', 'order']
+                  'poll_id', 'poll_title', 'district_name', 'order']
         read_only_fields = ['id', 'vote_count']
 
 
@@ -113,7 +115,7 @@ class VoteCreateSerializer(serializers.Serializer):
             candidate = Candidate.objects.get(
                 id=data['candidate_id'], 
                 is_active=True,
-                district__region__poll=poll
+                poll=poll
             )
         except Candidate.DoesNotExist:
             raise serializers.ValidationError("Nomzod topilmadi yoki bu so'rovnomaga tegishli emas!")

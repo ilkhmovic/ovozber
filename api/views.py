@@ -101,18 +101,22 @@ class PollViewSet(viewsets.ReadOnlyModelViewSet):
         
         # Top nomzodlar
         top_candidates = Candidate.objects.filter(
-            district__region__poll=poll, is_active=True
+            poll=poll, is_active=True
         ).annotate(
             vote_count=Count('votes')
         ).select_related('district__region').order_by('-vote_count')[:10]
         
-        top_candidates_data = [{
-            'id': c.id,
-            'name': c.full_name,
-            'district': c.district.name,
-            'region': c.district.region.name,
-            'votes': c.vote_count
-        } for c in top_candidates]
+        top_candidates_data = []
+        for c in top_candidates:
+            district = c.district.name if c.district else None
+            region = c.district.region.name if c.district else None
+            top_candidates_data.append({
+                'id': c.id,
+                'name': c.full_name,
+                'district': district,
+                'region': region,
+                'votes': c.vote_count
+            })
         
         return Response({
             'poll': PollSerializer(poll).data,
@@ -153,7 +157,7 @@ class DistrictViewSet(viewsets.ReadOnlyModelViewSet):
 
 class CandidateViewSet(viewsets.ReadOnlyModelViewSet):
     """Nomzodlar API (faqat o'qish)"""
-    queryset = Candidate.objects.filter(is_active=True).select_related('district__region')
+    queryset = Candidate.objects.filter(is_active=True).select_related('poll', 'district__region')
     serializer_class = CandidateSerializer
 
     @action(detail=False, methods=['get'])
@@ -167,6 +171,20 @@ class CandidateViewSet(viewsets.ReadOnlyModelViewSet):
             )
         
         candidates = self.queryset.filter(district_id=district_id)
+        serializer = self.get_serializer(candidates, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def by_poll(self, request):
+        """So'rovnoma bo'yicha nomzodlarni olish"""
+        poll_id = request.query_params.get('poll_id')
+        if not poll_id:
+            return Response(
+                {'error': 'poll_id parametri talab qilinadi'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        candidates = self.queryset.filter(poll_id=poll_id)
         serializer = self.get_serializer(candidates, many=True)
         return Response(serializer.data)
 
@@ -198,6 +216,38 @@ class VoteViewSet(viewsets.ModelViewSet):
 def statistics(request):
     """Umumiy statistika"""
     total_users = TelegramUser.objects.count()
+
+
+# Webhook for Telegram (used when deploying via webhook instead of polling)
+from django.views.decorators.csrf import csrf_exempt
+from django.http import HttpResponse, JsonResponse
+import json
+import asyncio
+import telegram
+from bot.webhook import application as telegram_application
+from bot.config import BOT_TOKEN as BOT_TOKEN_CONFIG
+
+@csrf_exempt
+@api_view(['POST'])
+def telegram_webhook(request, token=None):
+    """Receive Telegram updates via webhook and forward to application."""
+    # Basic token check for security
+    if token != BOT_TOKEN_CONFIG:
+        return HttpResponse(status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return HttpResponse(status=400)
+
+    try:
+        update = telegram.Update.de_json(payload, telegram_application.bot)
+        # process update synchronously
+        asyncio.run(telegram_application.process_update(update))
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+    return JsonResponse({'ok': True})
     total_votes = Vote.objects.count()
     subscribed_users = TelegramUser.objects.filter(is_subscribed=True).count()
     voted_users = TelegramUser.objects.filter(has_voted=True).count()
@@ -212,13 +262,17 @@ def statistics(request):
         vote_count=Count('votes')
     ).select_related('district__region').order_by('-vote_count')[:10]
     
-    top_candidates_data = [{
-        'id': c.id,
-        'name': c.full_name,
-        'district': c.district.name,
-        'region': c.district.region.name,
-        'votes': c.vote_count
-    } for c in top_candidates]
+    top_candidates_data = []
+    for c in top_candidates:
+        district = c.district.name if c.district else None
+        region = c.district.region.name if c.district else None
+        top_candidates_data.append({
+            'id': c.id,
+            'name': c.full_name,
+            'district': district,
+            'region': region,
+            'votes': c.vote_count
+        })
     
     return Response({
         'total_users': total_users,

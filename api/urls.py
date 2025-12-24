@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     TelegramUserViewSet, ChannelViewSet, PollViewSet, RegionViewSet,
     DistrictViewSet, CandidateViewSet, VoteViewSet,
-    statistics, check_subscription
+    statistics, check_subscription, telegram_webhook
 )
 
 router = DefaultRouter()
@@ -19,4 +19,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('statistics/', statistics, name='statistics'),
     path('check-subscription/', check_subscription, name='check-subscription'),
+    path('telegram/webhook/<str:token>/', telegram_webhook, name='telegram-webhook'),
 ]

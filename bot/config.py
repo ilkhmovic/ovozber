@@ -2,7 +2,11 @@
 import os
 
 # Telegram Bot Token (@BotFather dan olinadi)
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8573828164:AAFccyUo3yCnUh8VKntYwRJTj35kxJk9HxQ')
+# TEST TOKEN (Local Environment) — for security prefer setting BOT_TOKEN via env variable
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8338934458:AAFWEe8mGJ-vMKxPactZQURr170m7ALVn9E')
+
+# Run bot only in local/dev environment when this is set to '1' or 'true'. Set to '0' in production to prevent polling.
+RUN_BOT_LOCAL = os.getenv('RUN_BOT_LOCAL', '1')
 
 # Django API URL
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8000/api')

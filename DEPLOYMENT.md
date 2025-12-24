@@ -340,3 +340,38 @@ render shell <service-id>
 - Render Dashboard: https://dashboard.render.com
 - Render Docs: https://render.com/docs
 - Render Status: https://status.render.com
+
+---
+
+## PythonAnywhere (Webhooks) — Quick guide
+
+If you prefer PythonAnywhere (free tier) you can run the Django web app there and use Telegram webhooks for the bot (recommended, because background polling is unreliable on free accounts).
+
+1. Create a new **Web app** on PythonAnywhere and point it to this repository.
+2. Create / use a virtualenv and install dependencies:
+   - `pip install -r requirements.txt`
+3. In **Web tab** set WSGI config to your project path and virtualenv.
+4. Set Environment variables in the Web tab:
+   - `BOT_TOKEN`: your Telegram bot token
+   - `RUN_BOT_LOCAL=0`
+   - `API_BASE_URL=https://yourusername.pythonanywhere.com/api`
+   - `DEBUG=False`, `ALLOWED_HOSTS=yourusername.pythonanywhere.com`
+5. Run migrations & collectstatic in a Bash console:
+   - `python manage.py migrate`
+   - `python manage.py collectstatic --noinput`
+6. Reload the web app.
+7. Register the webhook with Telegram (replace domain and token):
+
+```bash
+curl -F "url=https://yourusername.pythonanywhere.com/api/telegram/webhook/$BOT_TOKEN/" https://api.telegram.org/bot$BOT_TOKEN/setWebhook
+```
+
+8. Check webhook info:
+```bash
+curl -s "https://api.telegram.org/bot$BOT_TOKEN/getWebhookInfo" | jq
+```
+
+Notes:
+- PythonAnywhere provides HTTPS for the `*.pythonanywhere.com` domain — webhook requires HTTPS.
+- Free accounts are fine for webhooks, but background polling requires a paid account or another hosting provider.
+- If you prefer, I can prepare a short `deploy-pythonanywhere.md` with exact step-by-step commands tailored to your account.

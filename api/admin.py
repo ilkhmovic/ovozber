@@ -1,6 +1,9 @@
 from django.contrib import admin
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 from .models import TelegramUser, Channel, Poll, Region, District, Candidate, Vote
+from django.urls import path
+from django.http import JsonResponse
 
 
 @admin.register(TelegramUser)
@@ -31,7 +34,11 @@ class TelegramUserAdmin(admin.ModelAdmin):
     def get_voted_polls_list(self, obj):
         polls = obj.get_voted_polls()
         if polls:
-            return format_html('<br>'.join([f'• {poll.title}' for poll in polls]))
+            return format_html_join(
+                mark_safe('<br>'),
+                '• {}',
+                ((poll.title,) for poll in polls)
+            )
         return 'Hali ovoz bermagan'
     get_voted_polls_list.short_description = 'Ovoz bergan so\'rovnomalar'
 
@@ -67,8 +74,8 @@ class PollAdmin(admin.ModelAdmin):
     
     def get_status(self, obj):
         if obj.is_open():
-            return format_html('<span style="color: green;">✓ Ochiq</span>')
-        return format_html('<span style="color: red;">✗ Yopiq</span>')
+            return format_html('<span style="color: green;">{}</span>', '✓ Ochiq')
+        return format_html('<span style="color: red;">{}</span>', '✗ Yopiq')
     get_status.short_description = 'Holat'
     
     def get_total_votes(self, obj):
@@ -139,14 +146,14 @@ class DistrictAdmin(admin.ModelAdmin):
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
     list_display = ['full_name', 'district', 'get_poll', 'position', 'order', 'is_active', 'get_vote_count', 'get_photo_preview']
-    list_filter = ['district__region__poll', 'district__region', 'district', 'is_active']
-    search_fields = ['full_name', 'position', 'district__name', 'district__region__poll__title']
+    list_filter = ['poll', 'district__region', 'district', 'is_active']
+    search_fields = ['full_name', 'position', 'district__name', 'poll__title']
     list_editable = ['order', 'is_active']
     readonly_fields = ['get_photo_preview', 'get_vote_count']
 
     fieldsets = (
         ('Asosiy ma\'lumotlar', {
-            'fields': ('district', 'full_name', 'position', 'bio')
+            'fields': ('poll', 'district', 'full_name', 'position', 'bio')
         }),
         ('Rasm', {
             'fields': ('photo', 'get_photo_preview')
@@ -161,8 +168,27 @@ class CandidateAdmin(admin.ModelAdmin):
     )
     
     def get_poll(self, obj):
-        return obj.district.region.poll.title
+        return obj.poll.title if obj.poll else (obj.district.region.poll.title if obj.district else None)
     get_poll.short_description = 'So\'rovnoma'
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('districts-by-poll/', self.admin_site.admin_view(self.districts_by_poll), name='api_candidate_districts_by_poll'),
+        ]
+        return custom_urls + urls
+
+    def districts_by_poll(self, request):
+        poll_id = request.GET.get('poll_id')
+        if not poll_id:
+            return JsonResponse({'error': 'poll_id is required'}, status=400)
+
+        qs = District.objects.filter(region__poll_id=poll_id, is_active=True).select_related('region').order_by('name')
+        data = [{'id': d.id, 'name': f"{d.name} ({d.region.name})"} for d in qs]
+        return JsonResponse(data, safe=False)
+
+    class Media:
+        js = ('admin/js/candidate_admin.js',)
 
     def get_photo_preview(self, obj):
         if obj.photo:
@@ -185,11 +211,11 @@ class VoteAdmin(admin.ModelAdmin):
     date_hierarchy = 'voted_at'
 
     def get_district(self, obj):
-        return obj.candidate.district.name
+        return obj.candidate.district.name if obj.candidate.district else None
     get_district.short_description = 'Tuman'
 
     def get_region(self, obj):
-        return obj.candidate.district.region.name
+        return obj.candidate.district.region.name if obj.candidate.district else None
     get_region.short_description = 'Viloyat'
 
     def has_add_permission(self, request):

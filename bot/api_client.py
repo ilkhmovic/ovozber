@@ -1,6 +1,6 @@
 import requests
 from typing import List, Dict, Optional
-from config import API_BASE_URL
+from .config import API_BASE_URL
 
 
 class APIClient:

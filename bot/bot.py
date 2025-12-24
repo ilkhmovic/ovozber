@@ -9,8 +9,8 @@ from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     ContextTypes, ConversationHandler
 )
-from api_client import APIClient
-from config import BOT_TOKEN, WELCOME_MESSAGE, SUBSCRIPTION_CONFIRMED, VOTE_SUCCESS, ALREADY_VOTED
+from .api_client import APIClient
+from .config import BOT_TOKEN, WELCOME_MESSAGE, SUBSCRIPTION_CONFIRMED, VOTE_SUCCESS, ALREADY_VOTED, RUN_BOT_LOCAL
 
 # Logging sozlamalari
 logging.basicConfig(
@@ -343,11 +343,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
-def main() -> None:
-    """Botni ishga tushirish"""
-    # Application yaratish
+def create_application() -> Application:
+    """Create and return a configured Application instance (no polling started)."""
     application = Application.builder().token(BOT_TOKEN).build()
-    
+
     # Conversation handler
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
@@ -377,15 +376,26 @@ def main() -> None:
             CommandHandler('cancel', cancel),
             CommandHandler('start', start),
             CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$')
-        ],
-        per_message=True,
+        ]
     )
-    
+
     application.add_handler(conv_handler)
-    
+    return application
+
+
+def main() -> None:
+    """Botni ishga tushirish (local polling)"""
+    application = create_application()
+
     # Botni ishga tushirish
     logger.info("Bot ishga tushdi...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    # Start polling only if RUN_BOT_LOCAL is enabled (prevents duplicate polling on remote deployments)
+    if str(RUN_BOT_LOCAL).lower() in ('1', 'true', 'yes'):
+        logger.info("Starting polling (local mode)...")
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    else:
+        logger.info("RUN_BOT_LOCAL is disabled — not starting polling. Start the bot locally if needed.")
 
 
 if __name__ == '__main__':
