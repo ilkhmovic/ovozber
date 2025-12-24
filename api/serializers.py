@@ -1,13 +1,18 @@
 from rest_framework import serializers
-from .models import TelegramUser, Channel, Region, District, Candidate, Vote
+from .models import TelegramUser, Channel, Poll, Region, District, Candidate, Vote
 
 
 class TelegramUserSerializer(serializers.ModelSerializer):
+    voted_polls_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = TelegramUser
         fields = ['id', 'telegram_id', 'username', 'full_name', 'phone_number', 
-                  'is_subscribed', 'has_voted', 'created_at']
+                  'is_subscribed', 'voted_polls_count', 'created_at']
         read_only_fields = ['id', 'created_at']
+    
+    def get_voted_polls_count(self, obj):
+        return obj.votes.values('poll').distinct().count()
 
 
 class ChannelSerializer(serializers.ModelSerializer):
@@ -15,6 +20,18 @@ class ChannelSerializer(serializers.ModelSerializer):
         model = Channel
         fields = ['id', 'channel_id', 'channel_username', 'title', 'description', 'is_active']
         read_only_fields = ['id']
+
+
+class PollSerializer(serializers.ModelSerializer):
+    total_votes = serializers.IntegerField(read_only=True)
+    total_participants = serializers.IntegerField(read_only=True)
+    is_open = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = Poll
+        fields = ['id', 'title', 'description', 'start_date', 'end_date', 
+                  'is_active', 'is_open', 'total_votes', 'total_participants', 'order']
+        read_only_fields = ['id', 'total_votes', 'total_participants']
 
 
 class CandidateSerializer(serializers.ModelSerializer):
@@ -43,39 +60,32 @@ class DistrictSerializer(serializers.ModelSerializer):
 class RegionSerializer(serializers.ModelSerializer):
     districts = DistrictSerializer(many=True, read_only=True)
     total_votes = serializers.IntegerField(read_only=True)
+    poll_id = serializers.IntegerField(source='poll.id', read_only=True)
+    poll_title = serializers.CharField(source='poll.title', read_only=True)
     
     class Meta:
         model = Region
-        fields = ['id', 'name', 'description', 'districts', 'total_votes', 'order']
+        fields = ['id', 'name', 'description', 'districts', 'total_votes', 
+                  'poll_id', 'poll_title', 'order']
         read_only_fields = ['id', 'total_votes']
 
 
 class VoteSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.full_name', read_only=True)
     candidate_name = serializers.CharField(source='candidate.full_name', read_only=True)
+    poll_title = serializers.CharField(source='poll.title', read_only=True)
     
     class Meta:
         model = Vote
-        fields = ['id', 'user', 'candidate', 'user_name', 'candidate_name', 
-                  'voted_at', 'ip_address']
-        read_only_fields = ['id', 'voted_at']
-
-    def validate(self, data):
-        """Bir foydalanuvchi faqat bir marta ovoz berishi mumkin"""
-        user = data.get('user')
-        if user and user.has_voted:
-            raise serializers.ValidationError("Siz allaqachon ovoz bergansiz!")
-        return data
-
-    def create(self, validated_data):
-        """Ovoz yaratish"""
-        vote = Vote.objects.create(**validated_data)
-        return vote
+        fields = ['id', 'poll', 'user', 'candidate', 'user_name', 'candidate_name', 
+                  'poll_title', 'voted_at', 'ip_address']
+        read_only_fields = ['id', 'poll', 'voted_at']
 
 
 class VoteCreateSerializer(serializers.Serializer):
     """Ovoz berish uchun soddalashtirilgan serializer"""
     telegram_id = serializers.IntegerField()
+    poll_id = serializers.IntegerField()
     candidate_id = serializers.IntegerField()
     
     def validate(self, data):
@@ -85,25 +95,42 @@ class VoteCreateSerializer(serializers.Serializer):
         except TelegramUser.DoesNotExist:
             raise serializers.ValidationError("Foydalanuvchi topilmadi!")
         
-        if user.has_voted:
-            raise serializers.ValidationError("Siz allaqachon ovoz bergansiz!")
+        # Pollni tekshirish
+        try:
+            poll = Poll.objects.get(id=data['poll_id'], is_active=True)
+        except Poll.DoesNotExist:
+            raise serializers.ValidationError("So'rovnoma topilmadi!")
+        
+        if not poll.is_open():
+            raise serializers.ValidationError("So'rovnoma yopiq!")
+        
+        # Foydalanuvchi bu pollda ovoz berganmi?
+        if user.has_voted_in_poll(poll.id):
+            raise serializers.ValidationError("Siz bu so'rovnomada allaqachon ovoz bergansiz!")
         
         # Nomzodni tekshirish
         try:
-            candidate = Candidate.objects.get(id=data['candidate_id'], is_active=True)
+            candidate = Candidate.objects.get(
+                id=data['candidate_id'], 
+                is_active=True,
+                district__region__poll=poll
+            )
         except Candidate.DoesNotExist:
-            raise serializers.ValidationError("Nomzod topilmadi!")
+            raise serializers.ValidationError("Nomzod topilmadi yoki bu so'rovnomaga tegishli emas!")
         
         data['user'] = user
+        data['poll'] = poll
         data['candidate'] = candidate
         return data
     
     def create(self, validated_data):
         user = validated_data['user']
+        poll = validated_data['poll']
         candidate = validated_data['candidate']
         
         vote = Vote.objects.create(
             user=user,
+            poll=poll,
             candidate=candidate
         )
         return vote
