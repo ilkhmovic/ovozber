@@ -284,11 +284,15 @@ def telegram_webhook(request, token=None):
     })
 
 
-@api_view(['POST'])
+@api_view(['POST', 'GET'])
 def check_subscription(request):
     """Foydalanuvchining obuna holatini tekshirish"""
-    telegram_id = request.data.get('telegram_id')
-    poll_id = request.data.get('poll_id')
+    if request.method == 'POST':
+        telegram_id = request.data.get('telegram_id')
+        poll_id = request.data.get('poll_id')
+    else:
+        telegram_id = request.query_params.get('telegram_id')
+        poll_id = request.query_params.get('poll_id')
     
     if not telegram_id:
         return Response(
@@ -311,3 +315,53 @@ def check_subscription(request):
             'is_subscribed': False,
             'has_voted_in_poll': False
         })
+
+
+@api_view(['GET'])
+def poll_statistics(request):
+    """So'rovnoma bo'yicha nomzodlarning ovoz statistikasi"""
+    poll_id = request.query_params.get('poll_id')
+    
+    if not poll_id:
+        return Response(
+            {'error': 'poll_id parametri talab qilinadi'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        poll = Poll.objects.get(id=poll_id)
+        candidates_stats = poll.candidates.annotate(
+            votes_count=Count('votes')
+        ).order_by('-votes_count').values(
+            'id', 'full_name', 'position', 'votes_count'
+        )
+        
+        total_votes = poll.total_votes
+        
+        stats_data = {
+            'poll_id': poll.id,
+            'poll_title': poll.title,
+            'total_votes': total_votes,
+            'total_participants': poll.total_participants,
+            'candidates': []
+        }
+        
+        rank = 1
+        for candidate in candidates_stats:
+            percentage = (candidate['votes_count'] / total_votes * 100) if total_votes > 0 else 0
+            stats_data['candidates'].append({
+                'rank': rank,
+                'candidate_id': candidate['id'],
+                'full_name': candidate['full_name'],
+                'position': candidate['position'],
+                'votes': candidate['votes_count'],
+                'percentage': round(percentage, 1)
+            })
+            rank += 1
+        
+        return Response(stats_data)
+    except Poll.DoesNotExist:
+        return Response(
+            {'error': 'So\'rovnoma topilmadi'},
+            status=status.HTTP_404_NOT_FOUND
+        )

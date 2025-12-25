@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
+from django.db.models import Count
 from .models import TelegramUser, Channel, Poll, Region, District, Candidate, Vote
 from django.urls import path
 from django.http import JsonResponse
@@ -57,7 +58,7 @@ class PollAdmin(admin.ModelAdmin):
     list_filter = ['is_active', 'created_at']
     search_fields = ['title', 'description']
     list_editable = ['order', 'is_active']
-    readonly_fields = ['get_total_votes', 'get_participants', 'created_at']
+    readonly_fields = ['get_total_votes', 'get_participants', 'created_at', 'get_candidates_stats']
     
     fieldsets = (
         ('Asosiy ma\'lumotlar', {
@@ -67,7 +68,7 @@ class PollAdmin(admin.ModelAdmin):
             'fields': ('start_date', 'end_date', 'is_active')
         }),
         ('Statistika', {
-            'fields': ('get_total_votes', 'get_participants', 'created_at'),
+            'fields': ('get_total_votes', 'get_participants', 'get_candidates_stats', 'created_at'),
             'classes': ('collapse',)
         }),
     )
@@ -85,6 +86,37 @@ class PollAdmin(admin.ModelAdmin):
     def get_participants(self, obj):
         return obj.total_participants
     get_participants.short_description = 'Ishtirokchilar'
+    
+    def get_candidates_stats(self, obj):
+        """Nomzodlarning ovoz statistikasini ko'rsatish"""
+        candidates = obj.candidates.annotate(
+            votes_count=Count('votes')
+        ).order_by('-votes_count').values('id', 'full_name', 'votes_count')
+        
+        if not candidates.exists():
+            return 'Nomzodlar mavjud emas'
+        
+        stats_html = '<table style="width:100%; border-collapse: collapse;"><tr style="background-color: #f0f0f0;"><th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Nomzod</th><th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Ovozlar</th><th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Foiz (%)</th></tr>'
+        
+        total = obj.total_votes if obj.total_votes > 0 else 1
+        
+        for candidate in candidates:
+            votes_count = candidate['votes_count']
+            percentage = (votes_count / total * 100) if total > 0 else 0
+            # Color code based on percentage
+            if percentage > 50:
+                color = '#28a745'  # Green
+            elif percentage > 25:
+                color = '#ffc107'  # Yellow
+            else:
+                color = '#dc3545'  # Red
+            
+            stats_html += f'<tr><td style="border: 1px solid #ddd; padding: 8px;">{candidate["full_name"]}</td><td style="border: 1px solid #ddd; padding: 8px; text-align: center; color: {color}; font-weight: bold;">{votes_count}</td><td style="border: 1px solid #ddd; padding: 8px; text-align: center;">{percentage:.1f}%</td></tr>'
+        
+        stats_html += '</table>'
+        return mark_safe(stats_html)
+    
+    get_candidates_stats.short_description = 'Nomzodlar bo\'yicha ovozlar'
 
 
 class RegionInline(admin.TabularInline):
@@ -145,11 +177,11 @@ class DistrictAdmin(admin.ModelAdmin):
 
 @admin.register(Candidate)
 class CandidateAdmin(admin.ModelAdmin):
-    list_display = ['full_name', 'district', 'get_poll', 'position', 'order', 'is_active', 'get_vote_count', 'get_photo_preview']
+    list_display = ['full_name', 'district', 'get_poll', 'position', 'order', 'is_active', 'get_vote_count_display', 'get_rank', 'get_photo_preview']
     list_filter = ['poll', 'district__region', 'district', 'is_active']
     search_fields = ['full_name', 'position', 'district__name', 'poll__title']
     list_editable = ['order', 'is_active']
-    readonly_fields = ['get_photo_preview', 'get_vote_count']
+    readonly_fields = ['get_photo_preview', 'get_vote_count_display']
 
     fieldsets = (
         ('Asosiy ma\'lumotlar', {
@@ -162,7 +194,7 @@ class CandidateAdmin(admin.ModelAdmin):
             'fields': ('order', 'is_active')
         }),
         ('Statistika', {
-            'fields': ('get_vote_count',),
+            'fields': ('get_vote_count_display',),
             'classes': ('collapse',)
         }),
     )
@@ -170,6 +202,45 @@ class CandidateAdmin(admin.ModelAdmin):
     def get_poll(self, obj):
         return obj.poll.title if obj.poll else (obj.district.region.poll.title if obj.district else None)
     get_poll.short_description = 'So\'rovnoma'
+    
+    def get_vote_count_display(self, obj):
+        """Ovozlar sonini rang bilan ko'rsatish"""
+        vote_count = obj.votes.count()
+        if vote_count == 0:
+            color = '#999'
+        elif vote_count < 5:
+            color = '#dc3545'  # Red
+        elif vote_count < 20:
+            color = '#ffc107'  # Yellow
+        else:
+            color = '#28a745'  # Green
+        return format_html('<span style="color: {}; font-weight: bold;">{}</span>', color, vote_count)
+    get_vote_count_display.short_description = 'Ovozlar'
+    
+    def get_rank(self, obj):
+        """Nomzodning so'rovnomada ranki"""
+        if not obj.poll:
+            return '-'
+        
+        # Use values() to avoid property conflicts when iterating
+        candidates_with_votes = list(obj.poll.candidates.annotate(
+            votes_count=Count('votes')
+        ).order_by('-votes_count').values('id', 'votes_count'))
+        
+        rank = 1
+        for candidate_data in candidates_with_votes:
+            if candidate_data['id'] == obj.id:
+                if rank == 1:
+                    return format_html('<span style="color: gold; font-weight: bold;">🥇 {}</span>', rank)
+                elif rank == 2:
+                    return format_html('<span style="color: silver; font-weight: bold;">🥈 {}</span>', rank)
+                elif rank == 3:
+                    return format_html('<span style="color: #CD7F32; font-weight: bold;">🥉 {}</span>', rank)
+                else:
+                    return format_html('<span>{}</span>', rank)
+            rank += 1
+        return '-'
+    get_rank.short_description = 'Rang'
 
     def get_urls(self):
         urls = super().get_urls()

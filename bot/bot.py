@@ -4,13 +4,14 @@ Telegram Ovoz Berish Boti
 """
 
 import logging
+from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     ContextTypes, ConversationHandler
 )
-from .api_client import APIClient
-from .config import BOT_TOKEN, WELCOME_MESSAGE, SUBSCRIPTION_CONFIRMED, VOTE_SUCCESS, ALREADY_VOTED, RUN_BOT_LOCAL
+from bot.api_client import APIClient
+from bot.config import BOT_TOKEN, BOT_USERNAME, WELCOME_MESSAGE, SUBSCRIPTION_CONFIRMED, VOTE_SUCCESS, ALREADY_VOTED, RUN_BOT_LOCAL, REFER_FRIENDS_MESSAGE
 
 # Logging sozlamalari
 logging.basicConfig(
@@ -70,6 +71,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         InlineKeyboardButton("✅ Obunani tekshirish", callback_data="check_subscription")
     ])
     
+    keyboard.append([
+        InlineKeyboardButton("👥 Dostlarni taklif qilish", callback_data="refer_friends")
+    ])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(message, reply_markup=reply_markup)
     
@@ -86,7 +91,15 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
     # Obunani tasdiqlash
     result = api.mark_subscribed(user.id)
     
-    await query.edit_message_text(SUBSCRIPTION_CONFIRMED)
+    try:
+        await query.edit_message_text(SUBSCRIPTION_CONFIRMED)
+    except Exception as e:
+        logger.error(f"Edit message error: {e}")
+        try:
+            await query.message.delete()
+        except:
+            pass
+        await query.message.chat.send_message(SUBSCRIPTION_CONFIRMED)
     
     # So'rovnomalarni ko'rsatish
     return await show_polls(update, context)
@@ -114,15 +127,25 @@ async def show_polls(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
         ])
     
+    # Add refer friends button
+    keyboard.append([
+        InlineKeyboardButton("👥 Dostlarni taklif qilish", callback_data="refer_friends")
+    ])
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     message = "📋 Ovoz berish uchun so'rovnomani tanlang:"
     
     if update.callback_query:
         # Eski xabarni o'chirish yoki yangilash
         try:
-            await update.callback_query.message.reply_text(message, reply_markup=reply_markup)
-        except Exception:
-             await update.callback_query.message.edit_text(message, reply_markup=reply_markup)
+            await update.callback_query.edit_message_text(message, reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Edit message error: {e}")
+            try:
+                await update.callback_query.message.delete()
+            except:
+                pass
+            await update.callback_query.message.chat.send_message(message, reply_markup=reply_markup)
     else:
         await update.message.reply_text(message, reply_markup=reply_markup)
     
@@ -148,6 +171,54 @@ async def select_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         
     # Viloyatlarni ko'rsatish (poll_id bilan)
     return await show_regions(update, context, poll_id)
+
+
+async def refer_friends(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Dostlarni taklif qilish"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Create share button with bot link
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📤 Chatga yuborish",
+                switch_inline_query=f"Ovoz berish botiga qatnashish: https://t.me/{BOT_USERNAME}?start=referred"
+            )
+        ],
+        [
+            InlineKeyboardButton("◀️ Orqaga", callback_data="back_to_refer")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    message = f"""👥 Dostlarni taklif qilish
+
+Quyidagi tugma orqali o'z dostlaringizni taklif etishingiz mumkin:
+
+🔗 Bot havolasi: https://t.me/{BOT_USERNAME}
+
+'📤 Chatga yuborish' tugmasini bosing va istalgan chatni tanlang."""
+    
+    try:
+        await query.edit_message_text(message, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Edit message error: {e}")
+        try:
+            await query.message.delete()
+        except:
+            pass
+        await query.message.chat.send_message(message, reply_markup=reply_markup)
+    return SELECTING_POLL
+
+
+async def back_to_refer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Refer menyusidan orqaga qaytish"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Eski holatga qaytish
+    return await show_polls(update, context)
 
 
 async def show_regions(update: Update, context: ContextTypes.DEFAULT_TYPE, poll_id: int = None) -> int:
@@ -182,7 +253,15 @@ async def show_regions(update: Update, context: ContextTypes.DEFAULT_TYPE, poll_
     message = "🗺 Viloyatingizni tanlang:"
     
     if update.callback_query:
-        await update.callback_query.message.reply_text(message, reply_markup=reply_markup)
+        try:
+            await update.callback_query.edit_message_text(message, reply_markup=reply_markup)
+        except Exception as e:
+            logger.error(f"Edit message error: {e}")
+            try:
+                await update.callback_query.message.delete()
+            except:
+                pass
+            await update.callback_query.message.chat.send_message(message, reply_markup=reply_markup)
     else:
         await update.message.reply_text(message, reply_markup=reply_markup)
     
@@ -201,7 +280,15 @@ async def select_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     districts = api.get_districts_by_region(region_id)
     
     if not districts:
-        await query.edit_message_text("⚠️ Bu viloyatda tumanlar mavjud emas.")
+        try:
+            await query.edit_message_text("⚠️ Bu viloyatda tumanlar mavjud emas.")
+        except Exception as e:
+            logger.error(f"Edit message error: {e}")
+            try:
+                await query.message.delete()
+            except:
+                pass
+            await query.message.chat.send_message("⚠️ Bu viloyatda tumanlar mavjud emas.")
         return SELECTING_REGION # Viloyat tanlashda qolish
     
     keyboard = []
@@ -218,7 +305,17 @@ async def select_region(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("🏘 Tumaningizni tanlang:", reply_markup=reply_markup)
+    message = "🏘 Tumaningizni tanlang:"
+    
+    try:
+        await query.edit_message_text(message, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Edit message error: {e}")
+        try:
+            await query.message.delete()
+        except:
+            pass
+        await query.message.chat.send_message(message, reply_markup=reply_markup)
     
     return SELECTING_DISTRICT
 
@@ -235,7 +332,15 @@ async def select_district(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     candidates = api.get_candidates_by_district(district_id)
     
     if not candidates:
-        await query.edit_message_text("⚠️ Bu tumanda nomzodlar mavjud emas.")
+        try:
+            await query.edit_message_text("⚠️ Bu tumanda nomzodlar mavjud emas.")
+        except Exception as e:
+            logger.error(f"Edit message error: {e}")
+            try:
+                await query.message.delete()
+            except:
+                pass
+            await query.message.chat.send_message("⚠️ Bu tumanda nomzodlar mavjud emas.")
         return SELECTING_DISTRICT
     
     keyboard = []
@@ -252,13 +357,123 @@ async def select_district(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("👤 Nomzodni tanlang:", reply_markup=reply_markup)
+    message = "👤 Nomzodni tanlang:"
+    
+    try:
+        await query.edit_message_text(message, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Edit message error: {e}")
+        try:
+            await query.message.delete()
+        except:
+            pass
+        await query.message.chat.send_message(message, reply_markup=reply_markup)
     
     return SELECTING_CANDIDATE
 
 
 async def select_candidate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Nomzod tanlash va ovoz berish"""
+    """Nomzod tanlash - ma'lumotlarini ko'rsatish"""
+    query = update.callback_query
+    await query.answer()
+    
+    candidate_id = int(query.data.split('_')[1])
+    context.user_data['candidate_id'] = candidate_id
+    poll_id = context.user_data.get('poll_id')
+    
+    if not poll_id:
+        try:
+            await query.edit_message_text("⚠️ Xatolik: So'rovnoma topilmadi. Qayta urinib ko'ring.")
+        except Exception as e:
+            logger.error(f"Edit message error: {e}")
+            try:
+                await query.message.delete()
+            except:
+                pass
+            await query.message.chat.send_message("⚠️ Xatolik: So'rovnoma topilmadi. Qayta urinib ko'ring.")
+        return await show_polls(update, context)
+    
+    # Nomzod ma'lumotlarini olish
+    candidate = api.get_candidate_detail(candidate_id)
+    logger.info(f"Candidate {candidate_id} details: {candidate}")
+    
+    if not candidate or 'full_name' not in candidate:
+        logger.warning(f"Candidate details not found or empty: {candidate}")
+        try:
+            await query.edit_message_text("⚠️ Nomzod ma'lumotlari topilmadi.")
+        except Exception as e:
+            logger.error(f"Edit message error: {e}")
+            try:
+                await query.message.delete()
+            except:
+                pass
+            await query.message.chat.send_message("⚠️ Nomzod ma'lumotlari topilmadi.")
+        return SELECTING_CANDIDATE
+    
+    # Nomzod ma'lumotlarini tayyorlash
+    full_name = candidate.get('full_name', 'Nomalum')
+    position = candidate.get('position', '')
+    biography = candidate.get('bio', candidate.get('biography', ''))  # 'bio' yoki 'biography'
+    photo_url = candidate.get('photo', '')
+    
+    # Xabar tayyorlash
+    message = f"👤 <b>{full_name}</b>"
+    if position:
+        message += f"\n📍 {position}"
+    if biography:
+        message += f"\n\n📋 Biografiya:\n{biography}"
+    
+    # Tugmalar
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Ovoz berish", callback_data=f"vote_{candidate_id}"),
+            InlineKeyboardButton("◀️ Orqaga", callback_data="back_to_districts")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Rasmni download qilib yuborish (agar mavjud bo'lsa)
+    if photo_url and isinstance(photo_url, str) and len(photo_url) > 5:
+        try:
+            photo_bytes = api.download_photo(photo_url)
+            if photo_bytes:
+                photo_file = BytesIO(photo_bytes)
+                photo_file.name = f"candidate_{candidate_id}.jpg"
+                # Eski xabarni o'chir va rasmli xabar jo'nat
+                try:
+                    await query.message.delete()
+                except:
+                    pass
+                await query.message.chat.send_photo(
+                    photo=photo_file,
+                    caption=message,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+                return SELECTING_CANDIDATE
+        except Exception as e:
+            logger.error(f"Photo send error: {e}")
+            # Rasm xato bo'lsa, faqat matn ko'rsatamiz
+            pass
+    
+    # Agar rasm bo'lmasa yoki rasm yuborish xato bo'lsa, matnli xabar ko'rsatish
+    try:
+        await query.edit_message_text(message, parse_mode='HTML', reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Message edit error: {e}")
+        # Agar edit xato bo'lsa, yangi xabar jo'natamiz
+        try:
+            await query.message.delete()
+        except:
+            pass
+        await query.message.chat.send_message(message, parse_mode='HTML', reply_markup=reply_markup)
+    
+    return SELECTING_CANDIDATE
+
+
+async def submit_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Ovoz berish"""
     query = update.callback_query
     await query.answer()
     
@@ -267,24 +482,54 @@ async def select_candidate(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user = query.from_user
     
     if not poll_id:
-        await query.edit_message_text("⚠️ Xatolik: So'rovnoma topilmadi. Qayta urinib ko'ring.")
+        try:
+            await query.edit_message_text("⚠️ Xatolik: So'rovnoma topilmadi.")
+        except:
+            await query.message.delete()
+            await query.message.chat.send_message("⚠️ Xatolik: So'rovnoma topilmadi.")
         return await show_polls(update, context)
-
+    
     # Ovoz berish
     result = api.submit_vote(user.id, poll_id, candidate_id)
     
+    try:
+        # Eski xabarni o'chir
+        await query.message.delete()
+    except:
+        pass
+    
     if result.get('status') == 'success':
-        await query.edit_message_text(f"{VOTE_SUCCESS}\n\nBoshqa so'rovnomalarda ham qatnashishingiz mumkin!")
-        # Yana pollsga qaytish uchun tugma qo'shish mumkin
+        message = f"✅ {VOTE_SUCCESS}\n\nBoshqa so'rovnomalarda ham qatnashishingiz mumkin!"
         keyboard = [[InlineKeyboardButton("📋 Boshqa so'rovnomalar", callback_data="back_to_polls")]]
-        await query.message.reply_text("Boshqa so'rovnomalar:", reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.message.chat.send_message(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        except Exception as e:
+            logger.error(f"Send success message failed: {e}")
+            try:
+                await query.message.reply_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+            except Exception as e2:
+                logger.error(f"Fallback send failed: {e2}")
     else:
-        error_message = result.get('message', 'Xatolik yuz berdi!')
-        await query.edit_message_text(f"❌ {error_message}")
-        
+        # Try to extract server provided error message
+        error_message = result.get('message') if isinstance(result, dict) else None
+        if not error_message:
+            # Many DRF validation errors come back in non_field_errors list
+            non_field = result.get('non_field_errors') if isinstance(result, dict) else None
+            if non_field and isinstance(non_field, list):
+                error_message = non_field[0]
+        if not error_message:
+            error_message = 'Xatolik yuz berdi!'
+        message = f"❌ {error_message}"
         # Xatolik bo'lsa ham polllarga qaytish tugmasini ko'rsatish
         keyboard = [[InlineKeyboardButton("◀️ So'rovnomalar", callback_data="back_to_polls")]]
-        await query.message.reply_text("Ortga qaytish:", reply_markup=InlineKeyboardMarkup(keyboard))
+        try:
+            await query.message.chat.send_message(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        except Exception as e:
+            logger.error(f"Send error message failed: {e}")
+            try:
+                await query.message.reply_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+            except Exception as e2:
+                logger.error(f"Fallback error send failed: {e2}")
     
     return SELECTING_POLL # Qayta poll tanlash rejimiga o'tadi
 
@@ -332,7 +577,18 @@ async def back_to_districts(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("🏘 Tumaningizni tanlang:", reply_markup=reply_markup)
+    message = "🏘 Tumaningizni tanlang:"
+    
+    # Try to edit, if it fails (e.g., photo message), delete and send new message
+    try:
+        await query.edit_message_text(message, reply_markup=reply_markup)
+    except Exception as e:
+        logger.error(f"Edit message error: {e}")
+        try:
+            await query.message.delete()
+        except:
+            pass
+        await query.message.chat.send_message(message, reply_markup=reply_markup)
     
     return SELECTING_DISTRICT
 
@@ -352,10 +608,13 @@ def create_application() -> Application:
         entry_points=[CommandHandler('start', start)],
         states={
             CHECKING_SUBSCRIPTION: [
-                CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$')
+                CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
+                CallbackQueryHandler(refer_friends, pattern='^refer_friends$')
             ],
             SELECTING_POLL: [
                 CallbackQueryHandler(select_poll, pattern='^poll_'),
+                CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
+                CallbackQueryHandler(back_to_refer, pattern='^back_to_refer$'),
                 CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$')
             ],
             SELECTING_REGION: [
@@ -369,6 +628,7 @@ def create_application() -> Application:
             ],
             SELECTING_CANDIDATE: [
                 CallbackQueryHandler(select_candidate, pattern='^candidate_'),
+                CallbackQueryHandler(submit_vote, pattern='^vote_'),
                 CallbackQueryHandler(back_to_districts, pattern='^back_to_districts$'),
             ],
         },

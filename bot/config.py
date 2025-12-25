@@ -5,6 +5,9 @@ import os
 # TEST TOKEN (Local Environment) — for security prefer setting BOT_TOKEN via env variable
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8338934458:AAFWEe8mGJ-vMKxPactZQURr170m7ALVn9E')
 
+# Bot username (e.g., 'ovozberbot', without @)
+BOT_USERNAME = os.getenv('BOT_USERNAME', 'ovozberbot')
+
 # Run bot only in local/dev environment when this is set to '1' or 'true'. Set to '0' in production to prevent polling.
 RUN_BOT_LOCAL = os.getenv('RUN_BOT_LOCAL', '1')
 
@@ -36,4 +39,14 @@ ALREADY_VOTED = """
 ⚠️ Siz bu so'rovnomada allaqachon ovoz bergansiz!
 
 Siz boshqa faol so'rovnomalarda qatnashishingiz mumkin.
+"""
+
+REFER_FRIENDS_MESSAGE = """
+👥 Dostlarni taklif qilish
+
+Bu havola orqali o'z dostlaringizni taklif etishingiz mumkin:
+
+🔗 [Bot havolasini ulashing](https://t.me/{BOT_USERNAME}?start=referred)
+
+Yoki quyidagi tugma orqali:
 """

@@ -1,6 +1,9 @@
 import requests
 from typing import List, Dict, Optional
-from .config import API_BASE_URL
+import logging
+from bot.config import API_BASE_URL
+
+logger = logging.getLogger(__name__)
 
 
 class APIClient:
@@ -12,10 +15,15 @@ class APIClient:
     def _get(self, endpoint: str, params: dict = None) -> dict:
         """GET so'rov"""
         try:
-            response = requests.get(f"{self.base_url}/{endpoint}", params=params)
+            url = f"{self.base_url}/{endpoint}"
+            logger.debug(f"GET request to: {url} with params: {params}")
+            response = requests.get(url, params=params)
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            logger.debug(f"Response: {result}")
+            return result
         except requests.RequestException as e:
+            logger.error(f"API GET error: {e}")
             print(f"API xatolik: {e}")
             return {}
     
@@ -23,9 +31,19 @@ class APIClient:
         """POST so'rov"""
         try:
             response = requests.post(f"{self.base_url}/{endpoint}", json=data)
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except requests.HTTPError as http_err:
+                # Try to return server-side error information if available
+                try:
+                    return response.json()
+                except Exception:
+                    logger.error(f"HTTP error: {http_err}")
+                    print(f"API xatolik: {http_err}")
+                    return {}
             return response.json()
         except requests.RequestException as e:
+            logger.error(f"API POST error: {e}")
             print(f"API xatolik: {e}")
             return {}
     
@@ -80,6 +98,10 @@ class APIClient:
         """Tuman bo'yicha nomzodlarni olish"""
         return self._get('candidates/by_district/', {'district_id': district_id})
     
+    def get_candidate_detail(self, candidate_id: int) -> dict:
+        """Nomzodning batafsil ma'lumotlarini olish"""
+        return self._get(f'candidates/{candidate_id}/', {})
+    
     # Ovoz berish
     def submit_vote(self, telegram_id: int, poll_id: int, candidate_id: int) -> dict:
         """Ovoz berish"""
@@ -93,3 +115,23 @@ class APIClient:
     def get_statistics(self) -> dict:
         """Umumiy statistikani olish"""
         return self._get('statistics/')
+    
+    def download_photo(self, photo_url: str) -> bytes:
+        """Rasmni download qilish"""
+        try:
+            if not photo_url:
+                return None
+            
+            # Agar relative path bo'lsa, full URL ga aylantir
+            if photo_url.startswith('/media/'):
+                photo_url = f"{API_BASE_URL.replace('/api', '')}{photo_url}"
+            elif not photo_url.startswith('http'):
+                photo_url = f"{API_BASE_URL.replace('/api', '')}/media/{photo_url}"
+            
+            logger.debug(f"Downloading photo from: {photo_url}")
+            response = requests.get(photo_url, timeout=10)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            logger.error(f"Photo download error: {e}")
+            return None
