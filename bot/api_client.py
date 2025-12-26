@@ -92,7 +92,7 @@ class APIClient:
             if clean_ep == 'candidates/by_district':
                 district_id = params.get('district_id')
                 candidates = Candidate.objects.filter(district_id=district_id, is_active=True)
-                return [{'id': c.id, 'full_name': c.full_name, 'position': c.position} for c in candidates]
+                return [{'id': c.id, 'full_name': c.full_name, 'position': c.position, 'vote_count': c.vote_count} for c in candidates]
             
             # Candidate detail: candidates/ID or just ID
             if clean_ep.startswith('candidates/') or clean_ep.isdigit():

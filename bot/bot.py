@@ -386,9 +386,10 @@ async def select_district(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     
     keyboard = []
     for candidate in candidates:
+        vote_count = candidate.get('vote_count', 0)
         keyboard.append([
             InlineKeyboardButton(
-                f"👤 {candidate['full_name']}" + (f" - {candidate['position']}" if candidate.get('position') else ""),
+                f"[{vote_count}] {candidate['full_name']}" + (f" - {candidate['position']}" if candidate.get('position') else ""),
                 callback_data=f"candidate_{candidate['id']}"
             )
         ])
