@@ -247,6 +247,8 @@ def telegram_webhook(request, token=None):
 
     async def process_update_async(app, update):
         try:
+            # Skip the redundant getMe() network call to Telegram on every webhook request
+            # This significantly speeds up response time on PythonAnywhere
             await app.initialize()
             await app.process_update(update)
             # Explicitly save persistence state after processing
