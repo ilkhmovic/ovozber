@@ -11,9 +11,15 @@ class APIClient:
     
     def __init__(self, base_url: str = API_BASE_URL):
         self.base_url = base_url.rstrip('/')
-    
+        self.is_internal = self.base_url.upper() == 'INTERNAL'
+        if self.is_internal:
+            logger.info("APIClient is running in INTERNAL mode (Direct ORM access)")
+
     def _get(self, endpoint: str, params: dict = None) -> dict:
         """GET so'rov"""
+        if self.is_internal:
+            return self._handle_internal_get(endpoint, params)
+
         try:
             url = f"{self.base_url}/{endpoint}"
             logger.debug(f"GET request to: {url} with params: {params}")
@@ -29,12 +35,14 @@ class APIClient:
     
     def _post(self, endpoint: str, data: dict) -> dict:
         """POST so'rov"""
+        if self.is_internal:
+            return self._handle_internal_post(endpoint, data)
+
         try:
             response = requests.post(f"{self.base_url}/{endpoint}", json=data)
             try:
                 response.raise_for_status()
             except requests.HTTPError as http_err:
-                # Try to return server-side error information if available
                 try:
                     return response.json()
                 except Exception:
@@ -46,6 +54,94 @@ class APIClient:
             logger.error(f"API POST error: {e}")
             print(f"API xatolik: {e}")
             return {}
+
+    def _handle_internal_get(self, endpoint: str, params: dict = None) -> dict:
+        """Internal Django logic for GET"""
+        from api.models import Channel, Poll, Region, District, Candidate, TelegramUser, Vote
+        from django.db.models import Count
+        
+        try:
+            if endpoint == 'channels/':
+                channels = Channel.objects.filter(is_active=True)
+                return {'results': [{'id': c.id, 'channel_id': c.channel_id, 'channel_username': c.channel_username, 'title': c.title} for c in channels]}
+            
+            if endpoint == 'polls/':
+                polls = Poll.objects.filter(is_active=True)
+                return {'results': [{'id': p.id, 'title': p.title, 'is_open': p.is_open()} for p in polls]}
+            
+            if endpoint.startswith('polls/') and endpoint.endswith('/regions/'):
+                poll_id = endpoint.split('/')[1]
+                regions = Region.objects.filter(poll_id=poll_id, is_active=True)
+                return [{'id': r.id, 'name': r.name} for r in regions]
+            
+            if endpoint == 'districts/by_region/':
+                region_id = params.get('region_id')
+                districts = District.objects.filter(region_id=region_id, is_active=True)
+                return [{'id': d.id, 'name': d.name} for d in districts]
+            
+            if endpoint == 'candidates/by_district/':
+                district_id = params.get('district_id')
+                candidates = Candidate.objects.filter(district_id=district_id, is_active=True)
+                return [{'id': c.id, 'full_name': c.full_name, 'position': c.position} for c in candidates]
+            
+            if endpoint.startswith('candidates/') and endpoint.count('/') == 1:
+                candidate_id = endpoint.split('/')[0] # endpoint is 'candidate_id/'
+                c = Candidate.objects.get(id=candidate_id)
+                return {
+                    'id': c.id, 'full_name': c.full_name, 'position': c.position, 
+                    'bio': c.bio, 'photo': c.photo.url if c.photo else None
+                }
+
+            if endpoint == 'statistics/':
+                return {
+                    'total_users': TelegramUser.objects.count(),
+                    'total_votes': Vote.objects.count()
+                }
+
+        except Exception as e:
+            logger.error(f"Internal GET error on {endpoint}: {e}")
+        return {}
+
+    def _handle_internal_post(self, endpoint: str, data: dict) -> dict:
+        """Internal Django logic for POST"""
+        from api.models import TelegramUser, Poll, Candidate, Vote
+        
+        try:
+            if endpoint == 'users/register/':
+                user, created = TelegramUser.objects.update_or_create(
+                    telegram_id=data['telegram_id'],
+                    defaults={'username': data['username'], 'full_name': data['full_name']}
+                )
+                return {'status': 'success', 'telegram_id': user.telegram_id}
+            
+            if endpoint.startswith('users/') and endpoint.endswith('/mark_subscribed/'):
+                tid = endpoint.split('/')[1]
+                TelegramUser.objects.filter(telegram_id=tid).update(is_subscribed=True)
+                return {'status': 'success'}
+            
+            if endpoint == 'check-subscription/':
+                tid = data['telegram_id']
+                poll_id = data.get('poll_id')
+                try:
+                    user = TelegramUser.objects.get(telegram_id=tid)
+                    res = {'is_subscribed': user.is_subscribed}
+                    if poll_id:
+                        res['has_voted_in_poll'] = user.has_voted_in_poll(poll_id)
+                    return res
+                except TelegramUser.DoesNotExist:
+                    return {'is_subscribed': False}
+            
+            if endpoint == 'votes/':
+                user = TelegramUser.objects.get(telegram_id=data['telegram_id'])
+                poll = Poll.objects.get(id=data['poll_id'])
+                candidate = Candidate.objects.get(id=data['candidate_id'])
+                Vote.objects.create(user=user, poll=poll, candidate=candidate)
+                return {'status': 'success'}
+
+        except Exception as e:
+            logger.error(f"Internal POST error on {endpoint}: {e}")
+            return {'status': 'error', 'message': str(e)}
+        return {}
     
     # Foydalanuvchilar
     def register_user(self, telegram_id: int, username: str, full_name: str) -> dict:
@@ -100,7 +196,9 @@ class APIClient:
     
     def get_candidate_detail(self, candidate_id: int) -> dict:
         """Nomzodning batafsil ma'lumotlarini olish"""
-        return self._get(f'candidates/{candidate_id}/', {})
+        # Ensure correct endpoint format for internal matcher
+        endpoint = f"{candidate_id}/" if self.is_internal else f"candidates/{candidate_id}/"
+        return self._get(endpoint, {})
     
     # Ovoz berish
     def submit_vote(self, telegram_id: int, poll_id: int, candidate_id: int) -> dict:
@@ -122,11 +220,24 @@ class APIClient:
             if not photo_url:
                 return None
             
-            # Agar relative path bo'lsa, full URL ga aylantir
+            # If INTERNAL mode and it's a local file, read it directly
+            if self.is_internal and (photo_url.startswith('/media/') or not photo_url.startswith('http')):
+                from django.conf import settings
+                import os
+                
+                # Strip leading / if present to avoid absolute path issues with os.path.join
+                rel_path = photo_url.replace('/media/', '') if photo_url.startswith('/media/') else photo_url
+                full_path = os.path.join(settings.MEDIA_ROOT, rel_path)
+                
+                if os.path.exists(full_path):
+                    with open(full_path, 'rb') as f:
+                        return f.read()
+            
+            # Fallback to HTTP
             if photo_url.startswith('/media/'):
-                photo_url = f"{API_BASE_URL.replace('/api', '')}{photo_url}"
+                photo_url = f"{self.base_url.replace('/api', '')}{photo_url}"
             elif not photo_url.startswith('http'):
-                photo_url = f"{API_BASE_URL.replace('/api', '')}/media/{photo_url}"
+                photo_url = f"{self.base_url.replace('/api', '')}/media/{photo_url}"
             
             logger.debug(f"Downloading photo from: {photo_url}")
             response = requests.get(photo_url, timeout=10)

@@ -15,7 +15,7 @@ RUN_BOT_LOCAL = config('RUN_BOT_LOCAL', default='1')
 # Django API URL
 API_BASE_URL = config('API_BASE_URL', default='http://localhost:8000/api')
 
-# Bot sozlamalari
+# Bot sozlamalasri
 WELCOME_MESSAGE = """
 🗳 Assalomu alaykum!
 
