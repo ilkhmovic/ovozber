@@ -32,7 +32,7 @@ class TelegramUser(models.Model):
 class Channel(models.Model):
     """Majburiy obuna kanallari"""
     channel_id = models.CharField(max_length=255, unique=True, verbose_name="Kanal ID")
-    channel_username = models.CharField(max_length=255, verbose_name="Kanal username (@siz)")
+    channel_username = models.CharField(max_length=255, blank=True, null=True, verbose_name="Kanal username (@siz)")
     title = models.CharField(max_length=255, verbose_name="Kanal nomi")
     description = models.TextField(blank=True, null=True, verbose_name="Tavsif")
     is_active = models.BooleanField(default=True, verbose_name="Faolmi")
