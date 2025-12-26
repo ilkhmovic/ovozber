@@ -10,8 +10,11 @@ class APIClient:
     """Django API bilan aloqa qilish uchun klient"""
     
     def __init__(self, base_url: str = API_BASE_URL):
-        self.base_url = base_url.rstrip('/')
+        # Use .strip() to remove hidden characters like \r or spaces from .env
+        self.base_url = str(base_url).strip().rstrip('/')
         self.is_internal = self.base_url.upper() == 'INTERNAL'
+        
+        logger.info(f"APIClient initialized. Base URL: '{self.base_url}', Internal Mode: {self.is_internal}")
         if self.is_internal:
             logger.info("APIClient is running in INTERNAL mode (Direct ORM access)")
 
@@ -39,7 +42,8 @@ class APIClient:
             return self._handle_internal_post(endpoint, data)
 
         try:
-            response = requests.post(f"{self.base_url}/{endpoint}", json=data)
+            url = f"{self.base_url}/{endpoint}"
+            response = requests.post(url, json=data)
             try:
                 response.raise_for_status()
             except requests.HTTPError as http_err:
@@ -58,41 +62,44 @@ class APIClient:
     def _handle_internal_get(self, endpoint: str, params: dict = None) -> dict:
         """Internal Django logic for GET"""
         from api.models import Channel, Poll, Region, District, Candidate, TelegramUser, Vote
-        from django.db.models import Count
         
         try:
-            if endpoint == 'channels/':
+            # Clean endpoint for matching
+            clean_ep = endpoint.strip('/')
+            
+            if clean_ep == 'channels':
                 channels = Channel.objects.filter(is_active=True)
                 return {'results': [{'id': c.id, 'channel_id': c.channel_id, 'channel_username': c.channel_username, 'title': c.title} for c in channels]}
             
-            if endpoint == 'polls/':
+            if clean_ep == 'polls':
                 polls = Poll.objects.filter(is_active=True)
                 return {'results': [{'id': p.id, 'title': p.title, 'is_open': p.is_open()} for p in polls]}
             
-            if endpoint.startswith('polls/') and endpoint.endswith('/regions/'):
-                poll_id = endpoint.split('/')[1]
+            if clean_ep.startswith('polls/') and clean_ep.endswith('/regions'):
+                poll_id = clean_ep.split('/')[1]
                 regions = Region.objects.filter(poll_id=poll_id, is_active=True)
                 return [{'id': r.id, 'name': r.name} for r in regions]
             
-            if endpoint == 'districts/by_region/':
+            if clean_ep == 'districts/by_region':
                 region_id = params.get('region_id')
                 districts = District.objects.filter(region_id=region_id, is_active=True)
                 return [{'id': d.id, 'name': d.name} for d in districts]
             
-            if endpoint == 'candidates/by_district/':
+            if clean_ep == 'candidates/by_district':
                 district_id = params.get('district_id')
                 candidates = Candidate.objects.filter(district_id=district_id, is_active=True)
                 return [{'id': c.id, 'full_name': c.full_name, 'position': c.position} for c in candidates]
             
-            if endpoint.startswith('candidates/') and endpoint.count('/') == 1:
-                candidate_id = endpoint.split('/')[0] # endpoint is 'candidate_id/'
+            # Candidate detail: candidates/ID or just ID
+            if clean_ep.startswith('candidates/') or clean_ep.isdigit():
+                candidate_id = clean_ep.split('/')[-1]
                 c = Candidate.objects.get(id=candidate_id)
                 return {
                     'id': c.id, 'full_name': c.full_name, 'position': c.position, 
                     'bio': c.bio, 'photo': c.photo.url if c.photo else None
                 }
 
-            if endpoint == 'statistics/':
+            if clean_ep == 'statistics':
                 return {
                     'total_users': TelegramUser.objects.count(),
                     'total_votes': Vote.objects.count()
@@ -107,19 +114,21 @@ class APIClient:
         from api.models import TelegramUser, Poll, Candidate, Vote
         
         try:
-            if endpoint == 'users/register/':
+            clean_ep = endpoint.strip('/')
+            
+            if clean_ep == 'users/register':
                 user, created = TelegramUser.objects.update_or_create(
                     telegram_id=data['telegram_id'],
                     defaults={'username': data['username'], 'full_name': data['full_name']}
                 )
                 return {'status': 'success', 'telegram_id': user.telegram_id}
             
-            if endpoint.startswith('users/') and endpoint.endswith('/mark_subscribed/'):
-                tid = endpoint.split('/')[1]
+            if clean_ep.startswith('users/') and clean_ep.endswith('/mark_subscribed'):
+                tid = clean_ep.split('/')[1]
                 TelegramUser.objects.filter(telegram_id=tid).update(is_subscribed=True)
                 return {'status': 'success'}
             
-            if endpoint == 'check-subscription/':
+            if clean_ep == 'check-subscription':
                 tid = data['telegram_id']
                 poll_id = data.get('poll_id')
                 try:
@@ -131,7 +140,7 @@ class APIClient:
                 except TelegramUser.DoesNotExist:
                     return {'is_subscribed': False}
             
-            if endpoint == 'votes/':
+            if clean_ep == 'votes':
                 user = TelegramUser.objects.get(telegram_id=data['telegram_id'])
                 poll = Poll.objects.get(id=data['poll_id'])
                 candidate = Candidate.objects.get(id=data['candidate_id'])
