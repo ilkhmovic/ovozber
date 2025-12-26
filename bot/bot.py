@@ -5,7 +5,8 @@ from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    ContextTypes, ConversationHandler, PicklePersistence
+    ContextTypes, ConversationHandler, PicklePersistence,
+    ChatJoinRequestHandler
 )
 from bot.api_client import APIClient
 from bot.config import (
@@ -59,16 +60,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     keyboard = []
     
     for channel in channels:
-        channel_username = channel['channel_username']
-        if not channel_username.startswith('@'):
-            channel_username = f"@{channel_username}"
+        channel_id = channel['channel_id']
+        username = channel.get('channel_username', '')
         
-        keyboard.append([
-            InlineKeyboardButton(
-                f"📢 {channel['title']}", 
-                url=f"https://t.me/{channel_username.replace('@', '')}"
-            )
-        ])
+        # Determine link
+        if username and not str(username).startswith('-') and not str(username).isdigit():
+            link = f"https://t.me/{str(username).replace('@', '')}"
+        else:
+            # It's a private channel ID, try to get or create an invite link
+            if 'links' not in context.bot_data:
+                context.bot_data['links'] = {}
+            
+            link = context.bot_data['links'].get(channel_id)
+            if not link:
+                try:
+                    chat = await context.bot.get_chat(channel_id)
+                    link = chat.invite_link
+                    if not link:
+                        link_obj = await context.bot.create_chat_invite_link(channel_id)
+                        link = link_obj.invite_link
+                    context.bot_data['links'][channel_id] = link
+                except Exception as e:
+                    logger.error(f"Failed to get/create link for {channel_id}: {e}")
+                    link = None
+
+        if link:
+            keyboard.append([
+                InlineKeyboardButton(f"📢 {channel['title']}", url=link)
+            ])
     
     keyboard.append([
         InlineKeyboardButton("✅ Obunani tekshirish", callback_data="check_subscription")
@@ -85,14 +104,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def check_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Obunani tekshirish"""
+    """Obunani haqiqiy tekshirish"""
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    channels = api.get_channels()
+    not_subscribed = []
+    
+    for channel in channels:
+        try:
+            member = await context.bot.get_chat_member(chat_id=channel['channel_id'], user_id=user_id)
+            if member.status in ['left', 'kicked', 'left_member']:
+                not_subscribed.append(channel['title'])
+        except Exception as e:
+            logger.error(f"Subscription check error for {channel['channel_id']}: {e}")
+            # If bot is not admin in that channel, we can't check
+            continue
+
+    if not_subscribed:
+        # User is not subscribed to some channels
+        channels_str = ", ".join(not_subscribed)
+        await query.answer(f"❌ Siz hali quyidagi kanallarga obuna bo'lmagansiz: {channels_str}", show_alert=True)
+        return CHECKING_SUBSCRIPTION
+
     await query.answer()
     
-    user = query.from_user
-    
     # Obunani tasdiqlash
-    result = api.mark_subscribed(user.id)
+    api.mark_subscribed(user_id)
     
     try:
         await query.edit_message_text(SUBSCRIPTION_CONFIRMED)
@@ -104,7 +142,7 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
             pass
         await query.message.chat.send_message(SUBSCRIPTION_CONFIRMED)
     
-    # So'rovnomalarni ko'rsatish
+    # So'rovnomalar
     return await show_polls(update, context)
 
 
@@ -596,6 +634,16 @@ async def back_to_districts(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return SELECTING_DISTRICT
 
 
+async def approve_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kanalga qo'shilish so'rovlarini avtomatik tasdiqlash"""
+    chat_join_request = update.chat_join_request
+    try:
+        await chat_join_request.approve()
+        logger.info(f"Approved join request for {chat_join_request.from_user.id} in {chat_join_request.chat.id}")
+    except Exception as e:
+        logger.error(f"Failed to approve join request: {e}")
+
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Bekor qilish"""
     await update.message.reply_text("Jarayon bekor qilindi. /start ni bosing.")
@@ -663,6 +711,10 @@ def create_application() -> Application:
     )
 
     application.add_handler(conv_handler)
+    
+    # Join request handler (auto approve)
+    application.add_handler(ChatJoinRequestHandler(approve_join_request))
+    
     return application
 
 
