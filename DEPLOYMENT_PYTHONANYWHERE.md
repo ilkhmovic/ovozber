@@ -119,7 +119,6 @@ import requests
 
 TOKEN = "8573828164:AAG5EkPnpqinh_q8BCbUxCrcRn8SUuKz-IY"
 HOST = "ovozber1234.pythonanywhere.com"
-
 # 1. Eski webhookni o'chirish
 delete_url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook"
 print("Delete:", requests.get(delete_url).json())
