@@ -14,9 +14,13 @@ class APIClient:
         self.base_url = str(base_url).strip().rstrip('/')
         self.is_internal = self.base_url.upper() == 'INTERNAL'
         
-        logger.info(f"APIClient initialized. Base URL: '{self.base_url}', Internal Mode: {self.is_internal}")
         if self.is_internal:
-            logger.info("APIClient is running in INTERNAL mode (Direct ORM access)")
+            import os
+            # Allow ORM calls from async context (Telegram bot event loop)
+            os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+            logger.info("APIClient is running in INTERNAL mode (Direct ORM access) with ASYNC_UNSAFE=true")
+        else:
+            logger.info(f"APIClient initialized with base_url: {self.base_url}")
 
     def _get(self, endpoint: str, params: dict = None) -> dict:
         """GET so'rov"""
