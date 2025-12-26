@@ -673,6 +673,7 @@ def create_application() -> Application:
             CallbackQueryHandler(select_district, pattern='^district_'),
             CallbackQueryHandler(select_candidate, pattern='^candidate_'),
             CallbackQueryHandler(submit_vote, pattern='^vote_'),
+            CallbackQueryHandler(back_to_refer, pattern='^back_to_refer$'),
         ],
         states={
             CHECKING_SUBSCRIPTION: [
@@ -706,7 +707,8 @@ def create_application() -> Application:
             CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$'),
             CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
             CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
-            CallbackQueryHandler(show_polls, pattern='^back_to_polls$')
+            CallbackQueryHandler(show_polls, pattern='^back_to_polls$'),
+            CallbackQueryHandler(back_to_refer, pattern='^back_to_refer$'),
         ]
     )
 
