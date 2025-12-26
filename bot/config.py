@@ -4,7 +4,7 @@ from decouple import config
 
 # Telegram Bot Token (@BotFather dan olinadi)
 # TEST TOKEN (Local Environment) — for security prefer setting BOT_TOKEN via env variable
-BOT_TOKEN = config('BOT_TOKEN', default='8338934458:AAFWEe8mGJ-vMKxPactZQURr170m7ALVn9E')
+BOT_TOKEN = config('BOT_TOKEN', default='')
 
 # Bot username (e.g., 'ovozberbot', without @)
 BOT_USERNAME = config('BOT_USERNAME', default='ovozberbot')
