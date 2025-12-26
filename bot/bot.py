@@ -181,7 +181,7 @@ async def show_polls(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         try:
             await update.callback_query.edit_message_text(message, reply_markup=reply_markup)
         except Exception as e:
-            logger.error(f"Edit message error: {e}")
+            logger.error(f"Edit message error in show_polls: {e}")
             try:
                 await update.callback_query.message.delete()
             except:
@@ -297,7 +297,7 @@ async def show_regions(update: Update, context: ContextTypes.DEFAULT_TYPE, poll_
         try:
             await update.callback_query.edit_message_text(message, reply_markup=reply_markup)
         except Exception as e:
-            logger.error(f"Edit message error: {e}")
+            logger.error(f"Edit message error in show_regions: {e}")
             try:
                 await update.callback_query.message.delete()
             except:
@@ -662,53 +662,55 @@ def create_application() -> Application:
         .build()
     )
 
+    # Shared navigation handlers to be used in multiple states and fallbacks
+    back_handlers = [
+        CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$'),
+        CallbackQueryHandler(back_to_regions, pattern='^back_to_regions$'),
+        CallbackQueryHandler(back_to_districts, pattern='^back_to_districts$'),
+        CallbackQueryHandler(back_to_refer, pattern='^back_to_refer$'),
+        CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
+    ]
+
     # Conversation handler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
+            *back_handlers,
             CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
             CallbackQueryHandler(select_poll, pattern='^poll_'),
             CallbackQueryHandler(select_region, pattern='^region_'),
             CallbackQueryHandler(select_district, pattern='^district_'),
             CallbackQueryHandler(select_candidate, pattern='^candidate_'),
             CallbackQueryHandler(submit_vote, pattern='^vote_'),
-            CallbackQueryHandler(back_to_refer, pattern='^back_to_refer$'),
         ],
         states={
             CHECKING_SUBSCRIPTION: [
                 CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
-                CallbackQueryHandler(refer_friends, pattern='^refer_friends$')
+                *back_handlers,
             ],
             SELECTING_POLL: [
                 CallbackQueryHandler(select_poll, pattern='^poll_'),
-                CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
-                CallbackQueryHandler(back_to_refer, pattern='^back_to_refer$'),
-                CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$')
+                *back_handlers,
             ],
             SELECTING_REGION: [
                 CallbackQueryHandler(select_region, pattern='^region_'),
-                CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$'),
-                CallbackQueryHandler(show_polls, pattern='^back_to_polls$')
+                *back_handlers,
             ],
             SELECTING_DISTRICT: [
                 CallbackQueryHandler(select_district, pattern='^district_'),
-                CallbackQueryHandler(back_to_regions, pattern='^back_to_regions$'),
+                *back_handlers,
             ],
             SELECTING_CANDIDATE: [
                 CallbackQueryHandler(select_candidate, pattern='^candidate_'),
                 CallbackQueryHandler(submit_vote, pattern='^vote_'),
-                CallbackQueryHandler(back_to_districts, pattern='^back_to_districts$'),
+                *back_handlers,
             ],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
             CommandHandler('start', start),
-            CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$'),
-            CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
+            *back_handlers,
             CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
-            CallbackQueryHandler(show_polls, pattern='^back_to_polls$'),
-            CallbackQueryHandler(back_to_refer, pattern='^back_to_refer$'),
         ]
     )
 
