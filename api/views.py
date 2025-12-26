@@ -224,7 +224,7 @@ from django.http import HttpResponse, JsonResponse
 import json
 import asyncio
 import telegram
-from bot.webhook import application as telegram_application
+from bot.bot import create_application
 from bot.config import BOT_TOKEN as BOT_TOKEN_CONFIG
 
 import logging
@@ -245,26 +245,25 @@ def telegram_webhook(request, token=None):
         logger.error(f"Invalid JSON payload: {e}")
         return HttpResponse(status=400)
 
-    try:
-        # Initialize bot/application if needed (usually done at module level)
-        # Process update
-        update = telegram.Update.de_json(payload, telegram_application.bot)
-        
-        # Run async process_update in sync context
-        # Check if there is already an event loop (rare in sync WSGI but possible)
+    async def process_update_async(app, update):
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
+            await app.initialize()
+            await app.process_update(update)
+            await app.shutdown()
+        except Exception as e:
+            logger.error(f"Async processing error: {e}", exc_info=True)
 
-        if loop and loop.is_running():
-            # This path is complex in sync Django, but asyncio.run handles the 'no loop' case
-            # If we are somehow in a loop, we might need run_until_complete or create_task
-            # For standard WSGI, asyncio.run is best.
-            logger.warning("Running event loop detected in webhook view")
-            loop.create_task(telegram_application.process_update(update))
-        else:
-            asyncio.run(telegram_application.process_update(update))
+    try:
+        # Create a fresh application instance for this request
+        # This is required because we are using asyncio.run() which creates a new event loop
+        # Reusing a global application would cause it to be bound to a closed loop from a previous request.
+        app = create_application()
+        
+        # Manually decode update using the bot instance from the new app
+        update = telegram.Update.de_json(payload, app.bot)
+        
+        # Process asynchronously
+        asyncio.run(process_update_async(app, update))
             
     except Exception as e:
         logger.error(f"Error processing webhook update: {e}", exc_info=True)

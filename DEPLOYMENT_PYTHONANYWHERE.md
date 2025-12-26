@@ -1,104 +1,102 @@
 
-# Deploying Ovozber Bot on PythonAnywhere
+# Ovozber Botini PythonAnywhere-ga Joylash Bo'yicha Qo'llanma
 
-This guide describes how to deploy the Ovozber Django project and Telegram bot to PythonAnywhere.
+Ushbu qo'llanma Ovozber Django loyihasini va Telegram botini PythonAnywhere-ga joylash (deploy qilish) jarayonini tushuntiradi.
 
-## 1. Prerequisites
+## 1. Talablar (Prerequisites)
 
--   A PythonAnywhere account.
--   Your project code uploaded to PythonAnywhere (via Git or ZIP).
--   A Telegram Bot Token (from @BotFather).
+-   PythonAnywhere akkaunti.
+-   Loyihangiz kodi PythonAnywhere-ga yuklangan bo'lishi kerak (Git yoki ZIP orqali).
+-   Telegram Bot Token (@BotFather dan olingan).
 
-## 2. Environment Setup
+## 2. Muhitni Tayyorlash (Environment Setup)
 
-1.  **Open a Console** on PythonAnywhere.
-2.  **Create a Virtual Environment**:
+1.  PythonAnywhere saytida **Console** (Terminal) bo'limini oching.
+2.  **Virtual muhit (venv) yarating**:
     ```bash
     mkvirtualenv --python=/usr/bin/python3.10 myenv
     ```
-    *(Note: Adjust python version if needed, 3.10 is recommended)*
+    *(Eslatma: Agar kerak bo'lsa python versiyasini o'zgartiring, 3.10 tavsiya etiladi)*
 
-3.  **Install Dependencies**:
-    Navigate to your project folder where `requirements.txt` is located:
+3.  **Kutubxonalarni o'rnating**:
+    `requirements.txt` fayli joylashgan papkaga kiring:
     ```bash
-    cd ~/ovozber_1  # Adjust path as necessary
+    cd ~/ovozber_1  # Papka nomini o'zingiznikiga moslang
     pip install -r requirements.txt
     ```
 
-## 3. Project Configuration
+## 3. Loyiha Sozlamalari
 
-1.  **Environment Variables**:
-    Create a `.env` file in your project root (`~/ovozber_1/.env`).
+1.  **Environment O'zgaruvchilar**:
+    Loyiha asosiy papkasida `.env` faylini yarating (`~/ovozber_1/.env`).
     
     ```bash
     nano .env
     ```
     
-    Add the following content (Adjust values):
+    Quyidagi tarkibni qo'shing (O'zgaruvchilarni o'zingizga moslang):
     ```env
     DEBUG=False
-    SECRET_KEY=your-secure-secret-key
+    SECRET_KEY=sizning-maxfiy-kalitingiz
     ALLOWED_HOSTS=ovozber1234.pythonanywhere.com
     BOT_TOKEN=8573828164:AAG5EkPnpqinh_q8BCbUxCrcRn8SUuKz-IY
-    BOT_USERNAME=your_bot_username_without_at
+    BOT_USERNAME=bot_username_kuchukchasiz
     RUN_BOT_LOCAL=0
-    DATABASE_URL=sqlite:////home/yourusername/ovozber_1/db.sqlite3
+    DATABASE_URL=sqlite:////home/sizning_username/ovozber_1/db.sqlite3
     ```
-    *Replace `yourusername` with your PythonAnywhere username.*
+    *`sizning_username` o'rniga PythonAnywhere usernameingizni yozing.*
 
-2.  **Collect Static Files**:
+2.  **Statik fayllarni yig'ish**:
     ```bash
     python manage.py collectstatic
     ```
 
-3.  **Migrate Database**:
+3.  **Bazani migratsiya qilish**:
     ```bash
     python manage.py migrate
     ```
 
-## 4. Web App Configuration (on PythonAnywhere Dashboard)
+## 4. Web App Sozlamalari (PythonAnywhere saytida)
 
-1.  Go to the **Web** tab.
-2.  **Add a new web app**:
-    -   Select **Manual configuration** (since we are using a custom virtualenv).
-    -   Select **Python 3.10** (matching your virtualenv).
+1.  **Web** bo'limiga o'ting.
+2.  **Yangi web app qo'shing**:
+    -   **Manual configuration** ni tanlang (chunki biz custom virtualenv ishlatyapmiz).
+    -   **Python 3.10** ni tanlang (virtualenv versiyasi bilan bir xil bo'lsin).
 3.  **Virtualenv**:
-    -   Enter the path: `/home/yourusername/.virtualenvs/myenv`
-4.  **Code**:
-    -   **Source code**: `/home/yourusername/ovozber_1`
-    -   **Working directory**: `/home/yourusername/ovozber_1`
-5.  **WSGI Configuration File**:
-    -   Click the link to edit the WSGI file.
-    -   Replace the contents with:
+    -   Yo'lni kiriting: `/home/sizning_username/.virtualenvs/myenv`
+4.  **Code (Kod)**:
+    -   **Source code**: `/home/sizning_username/ovozber_1`
+    -   **Working directory**: `/home/sizning_username/ovozber_1`
+5.  **WSGI Konfiguratsiya Fayli**:
+    -   WSGI faylini tahrirlash havolasini bosing.
+    -   Tarkibini quyidagiga almashtiring:
 
     ```python
     import os
     import sys
     from pathlib import Path
 
-    # Expand the path to include the project directory
-    path = '/home/yourusername/ovozber_1'  # CHANGE THIS
+    # Loyiha papkasini yo'lga qo'shish
+    path = '/home/sizning_username/ovozber_1'  # O'ZGARTIRING
     if path not in sys.path:
         sys.path.append(path)
 
-    # Load .env file
+    # .env faylini yuklash
     from decouple import config
-    # You might need to manually load .env if python-decouple doesn't find it automatically in WSGI 
-    # Or just rely on os.environ if set otherwise. 
-    # Better approach for PA:
     
+    # Django sozlamalarini ko'rsatish
     os.environ['DJANGO_SETTINGS_MODULE'] = 'ovozber.settings'
     
     from django.core.wsgi import get_wsgi_application
     application = get_wsgi_application()
     ```
-    *Make sure to change `yourusername`.*
+    *`sizning_username` ni o'z usernameingizga almashtirishni unutmang.*
 
-## 5. Setting the Webhook
+## 5. Webhookni O'rnatish
 
-Once the web app is running (click "Reload" on the Web tab), you need to tell Telegram to send updates to your URL.
+Web ilova ishga tushgandan so'ng (Web tabida "Reload" tugmasini bosing), Telegramga yangilanishlarni sizning saytingizga yuborishni buyurish kerak.
 
-Run this simple script in your PythonAnywhere console (or local terminal if you have the token):
+Ushbu oddiy skriptni PythonAnywhere konsolida (yoki tokenga ega bo'lsangiz o'z kompyuteringizda) yuriting:
 
 ```python
 import requests
@@ -110,9 +108,28 @@ URL = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url=https://{HOST}/api/te
 print(requests.get(URL).json())
 ```
 
-If successful, you should see `{'ok': True, 'result': True, ...}`.
+Agar muvaffaqiyatli bo'lsa, `{'ok': True, 'result': True, ...}` javobini ko'rasiz.
 
-## 6. Troubleshooting
+## 6. Webhookni Qayta Sozlash (Reset)
 
--   **Check Logs**: Look at the **Server log** and **Error log** on the Web tab.
--   **Static Files**: Ensure `STATIC_ROOT` is set and you've run `collectstatic`. mapping `/static/` -> `/home/yourusername/ovozber_1/staticfiles` in the Web tab "Static files" section is also good practice.
+Agar webhook xato ishlayotgan bo'lsa yoki tokenni o'zgartirsangiz, uni o'chirib qayta yoqish kerak:
+
+```python
+import requests
+
+TOKEN = "8573828164:AAG5EkPnpqinh_q8BCbUxCrcRn8SUuKz-IY"
+HOST = "ovozber1234.pythonanywhere.com"
+
+# 1. Eski webhookni o'chirish
+delete_url = f"https://api.telegram.org/bot{TOKEN}/deleteWebhook"
+print("Delete:", requests.get(delete_url).json())
+
+# 2. Yangi webhookni o'rnatish
+set_url = f"https://api.telegram.org/bot{TOKEN}/setWebhook?url=https://{HOST}/api/telegram/webhook/{TOKEN}/"
+print("Set:", requests.get(set_url).json())
+```
+
+## 7. Muammolarni Hal Qilish
+
+-   **Loglarni tekshirish**: Web tabidagi **Server log** va **Error log** fayllarini tekshiring.
+-   **Statik fayllar**: `STATIC_ROOT` sozlanganligiga va `collectstatic` qilinganligiga ishonch hosil qiling. Web tabida "Static files" bo'limida `/static/` -> `/home/sizning_username/ovozber_1/staticfiles` yo'naltirilgan bo'lishi kerak.

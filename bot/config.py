@@ -1,18 +1,19 @@
 # Bot konfiguratsiyasi
 import os
+from decouple import config
 
 # Telegram Bot Token (@BotFather dan olinadi)
 # TEST TOKEN (Local Environment) — for security prefer setting BOT_TOKEN via env variable
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8338934458:AAFWEe8mGJ-vMKxPactZQURr170m7ALVn9E')
+BOT_TOKEN = config('BOT_TOKEN', default='8338934458:AAFWEe8mGJ-vMKxPactZQURr170m7ALVn9E')
 
 # Bot username (e.g., 'ovozberbot', without @)
-BOT_USERNAME = os.getenv('BOT_USERNAME', 'ovozberbot')
+BOT_USERNAME = config('BOT_USERNAME', default='ovozberbot')
 
 # Run bot only in local/dev environment when this is set to '1' or 'true'. Set to '0' in production to prevent polling.
-RUN_BOT_LOCAL = os.getenv('RUN_BOT_LOCAL', '1')
+RUN_BOT_LOCAL = config('RUN_BOT_LOCAL', default='1')
 
 # Django API URL
-API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8000/api')
+API_BASE_URL = config('API_BASE_URL', default='http://localhost:8000/api')
 
 # Bot sozlamalari
 WELCOME_MESSAGE = """
