@@ -1,17 +1,20 @@
-#!/usr/bin/env python3
-"""
-Telegram Ovoz Berish Boti
-"""
-
+from pathlib import Path
+import os
 import logging
 from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
-    ContextTypes, ConversationHandler
+    ContextTypes, ConversationHandler, PicklePersistence
 )
 from bot.api_client import APIClient
-from bot.config import BOT_TOKEN, BOT_USERNAME, WELCOME_MESSAGE, SUBSCRIPTION_CONFIRMED, VOTE_SUCCESS, ALREADY_VOTED, RUN_BOT_LOCAL, REFER_FRIENDS_MESSAGE
+from bot.config import (
+    BOT_TOKEN, BOT_USERNAME, WELCOME_MESSAGE, SUBSCRIPTION_CONFIRMED, 
+    VOTE_SUCCESS, ALREADY_VOTED, RUN_BOT_LOCAL, REFER_FRIENDS_MESSAGE
+)
+
+# Base directory for persistence
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Logging sozlamalari
 logging.basicConfig(
@@ -601,11 +604,22 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def create_application() -> Application:
     """Create and return a configured Application instance (no polling started)."""
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Persistence setup for webhook mode
+    persistence = PicklePersistence(filepath=os.path.join(BASE_DIR, "bot_state.pickle"))
+    
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .persistence(persistence)
+        .build()
+    )
 
     # Conversation handler
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[
+            CommandHandler('start', start),
+            CallbackQueryHandler(refer_friends, pattern='^refer_friends$')
+        ],
         states={
             CHECKING_SUBSCRIPTION: [
                 CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
@@ -635,7 +649,9 @@ def create_application() -> Application:
         fallbacks=[
             CommandHandler('cancel', cancel),
             CommandHandler('start', start),
-            CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$')
+            CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$'),
+            CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
+            CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$')
         ]
     )
 
