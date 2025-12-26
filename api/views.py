@@ -249,6 +249,9 @@ def telegram_webhook(request, token=None):
         try:
             await app.initialize()
             await app.process_update(update)
+            # Explicitly save persistence state after processing
+            if app.persistence:
+                await app.update_persistence()
             await app.shutdown()
         except Exception as e:
             logger.error(f"Async processing error: {e}", exc_info=True)

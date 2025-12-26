@@ -618,7 +618,13 @@ def create_application() -> Application:
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(refer_friends, pattern='^refer_friends$')
+            CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
+            CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
+            CallbackQueryHandler(select_poll, pattern='^poll_'),
+            CallbackQueryHandler(select_region, pattern='^region_'),
+            CallbackQueryHandler(select_district, pattern='^district_'),
+            CallbackQueryHandler(select_candidate, pattern='^candidate_'),
+            CallbackQueryHandler(submit_vote, pattern='^vote_'),
         ],
         states={
             CHECKING_SUBSCRIPTION: [
@@ -651,7 +657,8 @@ def create_application() -> Application:
             CommandHandler('start', start),
             CallbackQueryHandler(back_to_polls, pattern='^back_to_polls$'),
             CallbackQueryHandler(refer_friends, pattern='^refer_friends$'),
-            CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$')
+            CallbackQueryHandler(check_subscription_callback, pattern='^check_subscription$'),
+            CallbackQueryHandler(show_polls, pattern='^back_to_polls$')
         ]
     )
 
