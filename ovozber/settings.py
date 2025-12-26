@@ -28,7 +28,9 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-gkx2om&3-x&fm15qo+ps$
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ["*", "ovozber1234.pythonanywhere.com"]
+
+CSRF_TRUSTED_ORIGINS = ['https://ovozber1234.pythonanywhere.com']
 
 
 # Application definition

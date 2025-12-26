@@ -227,24 +227,47 @@ import telegram
 from bot.webhook import application as telegram_application
 from bot.config import BOT_TOKEN as BOT_TOKEN_CONFIG
 
+import logging
+logger = logging.getLogger(__name__)
+
 @csrf_exempt
 @api_view(['POST'])
 def telegram_webhook(request, token=None):
     """Receive Telegram updates via webhook and forward to application."""
     # Basic token check for security
     if token != BOT_TOKEN_CONFIG:
+        logger.warning(f"Invalid webhook token received: {token}")
         return HttpResponse(status=403)
 
     try:
         payload = json.loads(request.body.decode('utf-8'))
-    except Exception:
+    except Exception as e:
+        logger.error(f"Invalid JSON payload: {e}")
         return HttpResponse(status=400)
 
     try:
+        # Initialize bot/application if needed (usually done at module level)
+        # Process update
         update = telegram.Update.de_json(payload, telegram_application.bot)
-        # process update synchronously
-        asyncio.run(telegram_application.process_update(update))
+        
+        # Run async process_update in sync context
+        # Check if there is already an event loop (rare in sync WSGI but possible)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # This path is complex in sync Django, but asyncio.run handles the 'no loop' case
+            # If we are somehow in a loop, we might need run_until_complete or create_task
+            # For standard WSGI, asyncio.run is best.
+            logger.warning("Running event loop detected in webhook view")
+            loop.create_task(telegram_application.process_update(update))
+        else:
+            asyncio.run(telegram_application.process_update(update))
+            
     except Exception as e:
+        logger.error(f"Error processing webhook update: {e}", exc_info=True)
         return JsonResponse({'ok': False, 'error': str(e)}, status=500)
 
     return JsonResponse({'ok': True})
