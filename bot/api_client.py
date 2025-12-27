@@ -66,10 +66,12 @@ class APIClient:
     def _handle_internal_get(self, endpoint: str, params: dict = None) -> dict:
         """Internal Django logic for GET"""
         from django.db import close_old_connections
-        close_old_connections()
         from api.models import Channel, Poll, Region, District, Candidate, TelegramUser, Vote
         
         try:
+            # Clean up old/broken connections before query
+            close_old_connections()
+            
             # Clean endpoint for matching
             clean_ep = endpoint.strip('/')
             
@@ -113,15 +115,20 @@ class APIClient:
 
         except Exception as e:
             logger.error(f"Internal GET error on {endpoint}: {e}")
+        finally:
+            # Crucial: Close connection AFTER query in internal/async mode
+            close_old_connections()
         return {}
 
     def _handle_internal_post(self, endpoint: str, data: dict) -> dict:
         """Internal Django logic for POST"""
         from django.db import close_old_connections
-        close_old_connections()
         from api.models import TelegramUser, Poll, Candidate, Vote
         
         try:
+            # Clean up before query
+            close_old_connections()
+            
             clean_ep = endpoint.strip('/')
             
             if clean_ep == 'users/register':
@@ -158,6 +165,9 @@ class APIClient:
         except Exception as e:
             logger.error(f"Internal POST error on {endpoint}: {e}")
             return {'status': 'error', 'message': str(e)}
+        finally:
+            # Crucial: Close connection AFTER query
+            close_old_connections()
         return {}
     
     # Foydalanuvchilar
