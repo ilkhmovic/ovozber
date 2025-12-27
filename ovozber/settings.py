@@ -85,6 +85,7 @@ DATABASE_URL = config('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite
 DATABASES = {
     'default': dj_database_url.parse(DATABASE_URL)
 }
+DATABASES['default']['CONN_MAX_AGE'] = 0
 
 # MySQL uchun Strict Mode ni yoqish
 if DATABASES['default'].get('ENGINE') == 'django.db.backends.mysql':

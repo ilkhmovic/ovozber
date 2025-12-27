@@ -65,6 +65,8 @@ class APIClient:
 
     def _handle_internal_get(self, endpoint: str, params: dict = None) -> dict:
         """Internal Django logic for GET"""
+        from django.db import close_old_connections
+        close_old_connections()
         from api.models import Channel, Poll, Region, District, Candidate, TelegramUser, Vote
         
         try:
@@ -115,6 +117,8 @@ class APIClient:
 
     def _handle_internal_post(self, endpoint: str, data: dict) -> dict:
         """Internal Django logic for POST"""
+        from django.db import close_old_connections
+        close_old_connections()
         from api.models import TelegramUser, Poll, Candidate, Vote
         
         try:
