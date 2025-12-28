@@ -4,7 +4,11 @@ from django.utils.safestring import mark_safe
 from django.db.models import Count
 from .models import TelegramUser, Channel, Poll, Region, District, Candidate, Vote
 from django.urls import path
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseRedirect
+from django.shortcuts import render, redirect
+from django.contrib import messages
+import requests
+from decouple import config
 
 
 @admin.register(TelegramUser)
@@ -12,6 +16,7 @@ class TelegramUserAdmin(admin.ModelAdmin):
     list_display = ['full_name', 'username', 'telegram_id', 'is_subscribed', 'get_voted_polls_count', 'created_at']
     list_filter = ['is_subscribed', 'created_at']
     search_fields = ['full_name', 'username', 'telegram_id']
+    actions = ['send_message_action']
     readonly_fields = ['telegram_id', 'created_at', 'updated_at', 'get_voted_polls_list']
     list_per_page = 50
 
@@ -42,6 +47,49 @@ class TelegramUserAdmin(admin.ModelAdmin):
             )
         return 'Hali ovoz bermagan'
     get_voted_polls_list.short_description = 'Ovoz bergan so\'rovnomalar'
+
+    def send_message_action(self, request, queryset):
+        """Tanlangan foydalanuvchilarga xabar yuborish uchun formaga o'tish"""
+        if 'apply' in request.POST:
+            message_text = request.POST.get('message_text')
+            if not message_text:
+                self.message_user(request, "Xabar matni bo'sh bo'lishi mumkin emas!", level=messages.ERROR)
+                return HttpResponseRedirect(request.get_full_path())
+            
+            bot_token = config('BOT_TOKEN', default='')
+            if not bot_token:
+                self.message_user(request, "BOT_TOKEN topilmadi!", level=messages.ERROR)
+                return HttpResponseRedirect(request.get_full_path())
+
+            success_count = 0
+            error_count = 0
+            
+            for user in queryset:
+                try:
+                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+                    payload = {
+                        'chat_id': user.telegram_id,
+                        'text': message_text,
+                        'parse_mode': 'HTML'
+                    }
+                    response = requests.post(url, json=payload, timeout=10)
+                    if response.status_code == 200:
+                        success_count += 1
+                    else:
+                        error_count += 1
+                except Exception as e:
+                    error_count += 1
+            
+            self.message_user(request, f"Xabar {success_count} ta foydalanuvchiga muvaffaqiyatli yuborildi. {error_count} ta xatolik.")
+            return HttpResponseRedirect(request.get_full_path())
+
+        return render(request, 'admin/api/telegramuser/send_message.html', {
+            'queryset_ids': queryset.values_list('id', flat=True),
+            'queryset_count': queryset.count(),
+            'opts': self.model._meta,
+            'title': "Xabar yuborish",
+        })
+    send_message_action.short_description = "Tanlanganlarga xabar yuborish"
 
 
 @admin.register(Channel)
