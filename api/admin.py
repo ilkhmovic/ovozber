@@ -8,6 +8,7 @@ from django.http import JsonResponse, HttpResponseRedirect
 from django.shortcuts import render, redirect
 from django.contrib import messages
 import requests
+import mimetypes
 from decouple import config
 
 
@@ -52,8 +53,10 @@ class TelegramUserAdmin(admin.ModelAdmin):
         """Tanlangan foydalanuvchilarga xabar yuborish uchun formaga o'tish"""
         if 'apply' in request.POST:
             message_text = request.POST.get('message_text')
-            if not message_text:
-                self.message_user(request, "Xabar matni bo'sh bo'lishi mumkin emas!", level=messages.ERROR)
+            media_file = request.FILES.get('media_file')
+            
+            if not message_text and not media_file:
+                self.message_user(request, "Xabar matni yoki fayl bo'lishi shart!", level=messages.ERROR)
                 return HttpResponseRedirect(request.get_full_path())
             
             bot_token = config('BOT_TOKEN', default='')
@@ -61,23 +64,60 @@ class TelegramUserAdmin(admin.ModelAdmin):
                 self.message_user(request, "BOT_TOKEN topilmadi!", level=messages.ERROR)
                 return HttpResponseRedirect(request.get_full_path())
 
+            # Tayyorgarlik: faylni o'qib olish
+            file_data = None
+            method = "sendMessage"
+            files = None
+            payload_key = "text"
+
+            if media_file:
+                file_data = media_file.read()
+                mime_type, _ = mimetypes.guess_type(media_file.name)
+                
+                if mime_type:
+                    if mime_type.startswith('image/'):
+                        method = "sendPhoto"
+                        payload_key = "caption"
+                        files_field = "photo"
+                    elif mime_type.startswith('video/'):
+                        method = "sendVideo"
+                        payload_key = "caption"
+                        files_field = "video"
+                    else:
+                        method = "sendDocument"
+                        payload_key = "caption"
+                        files_field = "document"
+                else:
+                    method = "sendDocument"
+                    payload_key = "caption"
+                    files_field = "document"
+
             success_count = 0
             error_count = 0
+            url = f"https://api.telegram.org/bot{bot_token}/{method}"
             
             for user in queryset:
                 try:
-                    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
                     payload = {
                         'chat_id': user.telegram_id,
-                        'text': message_text,
+                        payload_key: message_text,
                         'parse_mode': 'HTML'
                     }
-                    response = requests.post(url, json=payload, timeout=10)
+                    
+                    if file_data:
+                        # Har safar yangi file object yaratish kerak
+                        current_files = {files_field: (media_file.name, file_data, mime_type)}
+                        response = requests.post(url, data=payload, files=current_files, timeout=20)
+                    else:
+                        response = requests.post(url, json=payload, timeout=10)
+                        
                     if response.status_code == 200:
                         success_count += 1
                     else:
+                        logger.error(f"Telegram API error: {response.text}")
                         error_count += 1
                 except Exception as e:
+                    logger.error(f"Error sending message to {user.telegram_id}: {e}")
                     error_count += 1
             
             self.message_user(request, f"Xabar {success_count} ta foydalanuvchiga muvaffaqiyatli yuborildi. {error_count} ta xatolik.")
