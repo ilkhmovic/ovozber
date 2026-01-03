@@ -159,6 +159,15 @@ class APIClient:
                 user = TelegramUser.objects.get(telegram_id=data['telegram_id'])
                 poll = Poll.objects.get(id=data['poll_id'])
                 candidate = Candidate.objects.get(id=data['candidate_id'])
+                
+                # Check if poll is open
+                if not poll.is_open():
+                    return {'status': 'error', 'message': 'So\'rovnoma yopiq!'}
+                
+                # Check if already voted
+                if user.has_voted_in_poll(poll.id):
+                    return {'status': 'error', 'message': 'Siz bu so\'rovnomada allaqachon ovoz bergansiz!'}
+                
                 Vote.objects.create(user=user, poll=poll, candidate=candidate)
                 return {'status': 'success'}
 

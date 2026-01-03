@@ -205,8 +205,17 @@ async def select_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     # Poll holatini va user ovoz berganini tekshirish
     status = api.check_subscription(user.id, poll_id)
     
+    # 1. Poll ochiqmi?
+    polls = api.get_polls()
+    current_poll = next((p for p in polls if p['id'] == poll_id), None)
+    
+    if current_poll and not current_poll.get('is_open'):
+        await query.answer("⚠️ Bu so'rovnoma yopilgan!", show_alert=True)
+        return await show_polls(update, context)
+
+    # 2. Ovoz berganmi?
     if status.get('has_voted_in_poll'):
-        await query.message.reply_text("⚠️ Siz bu so'rovnomada allaqachon ovoz bergansiz.")
+        await query.answer("⚠️ Siz bu so'rovnomada allaqachon ovoz bergansiz!", show_alert=True)
         # Qaytib polls ro'yxatiga
         return await show_polls(update, context)
         
